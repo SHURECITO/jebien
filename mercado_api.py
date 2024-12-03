@@ -1,5 +1,6 @@
 import requests
 import json
+import time
 
 # Credenciales de tu aplicación en MercadoLibre
 CLIENT_ID = "1285162163304558"  # Reemplaza con tu APP_ID
@@ -113,7 +114,7 @@ def get_access_token():
 
 def get_mercadolibre_products():
     """
-    Obtiene productos desde la API de MercadoLibre usando el UserID.
+    Obtiene todos los productos desde la API de MercadoLibre usando el UserID.
     """
     access_token = get_access_token()
     if not access_token:
@@ -137,41 +138,60 @@ def get_mercadolibre_products():
         print(f"Excepción al obtener el UserID del usuario: {e}")
         return []
 
-    # Obtener productos del usuario
-    products_url = f"https://api.mercadolibre.com/users/{user_id}/items/search"
-    try:
-        response = requests.get(products_url, params={"access_token": access_token, "limit": 50})
-        if response.status_code == 200:
-            product_ids = response.json().get('results', [])
-            if not product_ids:
-                print("El usuario no tiene productos publicados en MercadoLibre.")
-                return []
+    # Obtener productos del usuario con paginación
+    products = []
+    offset = 0
+    limit = 50
 
-            products = []
-            for product_id in product_ids:
-                try:
-                    product_details_url = f"https://api.mercadolibre.com/items/{product_id}?access_token={access_token}"
-                    product_response = requests.get(product_details_url)
+    while True:
+        products_url = f"https://api.mercadolibre.com/users/{user_id}/items/search"
+        try:
+            response = requests.get(products_url, params={"access_token": access_token, "limit": limit, "offset": offset})
+            if response.status_code == 200:
+                data = response.json()
+                product_ids = data.get('results', [])
+                total_products = data.get('paging', {}).get('total', 0)
 
-                    if product_response.status_code == 200:
-                        product_data = product_response.json()
-                        products.append({
-                            "id": product_data["id"],
-                            "title": product_data["title"],
-                            "price": product_data["price"],
-                            "inventory": product_data["available_quantity"],
-                            "images": [img["url"] for img in product_data["pictures"]]
-                        })
-                    else:
-                        print(f"Error al obtener detalles del producto {product_id}: {product_response.status_code}")
-                except Exception as e:
-                    print(f"Error al procesar producto {product_id}: {e}")
+                if not product_ids:
+                    break  # No hay más productos para procesar
 
-            return products
-        else:
-            print(f"Error al obtener productos: {response.status_code}")
-            print(response.text)
-            return []
-    except Exception as e:
-        print(f"Excepción general al conectarse a MercadoLibre: {e}")
-        return []
+                print(f"Obteniendo productos {offset + 1} a {offset + len(product_ids)} de {total_products}...")
+                
+                # Obtener detalles de cada producto
+                for product_id in product_ids:
+                    try:
+                        product_details_url = f"https://api.mercadolibre.com/items/{product_id}?access_token={access_token}"
+                        product_response = requests.get(product_details_url)
+
+                        if product_response.status_code == 200:
+                            product_data = product_response.json()
+                            products.append({
+                                "id": product_data["id"],
+                                "title": product_data["title"],
+                                "price": product_data["price"],
+                                "inventory": product_data["available_quantity"],
+                                "images": [img["url"] for img in product_data["pictures"]]
+                            })
+                        else:
+                            print(f"Error al obtener detalles del producto {product_id}: {product_response.status_code}")
+                    except Exception as e:
+                        print(f"Error al procesar producto {product_id}: {e}")
+
+                # Incrementar el offset para la siguiente página
+                offset += limit
+
+                # Salir si hemos procesado todos los productos
+                if offset >= total_products:
+                    break
+
+                # Retardo para evitar exceder el límite de la API
+                time.sleep(1)  # Ajustá según los límites de la API
+            else:
+                print(f"Error al obtener productos: {response.status_code}")
+                print(response.text)
+                break
+        except Exception as e:
+            print(f"Excepción general al conectarse a MercadoLibre: {e}")
+            break
+
+    return products
