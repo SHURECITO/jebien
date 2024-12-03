@@ -1,55 +1,73 @@
-from mercado_api import refresh_access_token, get_access_token, get_mercadolibre_products
-from woocommerce_api import get_woocommerce_products, create_woocommerce_product
+from mercado_api import get_mercadolibre_products
+from woocommerce_api import get_woocommerce_products, create_woocommerce_product, update_woocommerce_stock
 from excel_report import generate_excel_report
 
 def main():
     try:
-        # Paso 1: Renovar el token automáticamente si es necesario
-        print("Validando y renovando token de MercadoLibre si es necesario...")
-        refresh_access_token()
-
-        # Paso 2: Obtener el token válido
-        access_token = get_access_token()
-        if not access_token:
-            print("No se pudo obtener un token válido. Genera uno nuevo manualmente.")
-            return
-
-        # Paso 3: Obtener productos de MercadoLibre
-        print("Obteniendo productos desde MercadoLibre...")
+        # Obtener productos de MercadoLibre
+        print("Obteniendo productos de MercadoLibre...")
         mercado_products = get_mercadolibre_products()
-        if not mercado_products:
-            print("No se obtuvieron productos desde MercadoLibre. Revisa tu configuración.")
-            return
         print(f"Productos obtenidos de MercadoLibre: {len(mercado_products)}")
 
-        # Paso 4: Obtener productos de WooCommerce
-        print("Obteniendo productos desde WooCommerce...")
+        # Obtener productos de WooCommerce
+        print("Obteniendo productos de WooCommerce...")
         woocommerce_products = get_woocommerce_products()
-        if not woocommerce_products:
-            print("No se obtuvieron productos desde WooCommerce. Revisa tu configuración.")
-            return
         print(f"Productos obtenidos de WooCommerce: {len(woocommerce_products)}")
 
-        # Paso 5: Detectar productos no enlazados
-        woocommerce_skus = {product["sku"] for product in woocommerce_products}
-        non_linked_products = [
-            product for product in mercado_products if product["id"] not in woocommerce_skus
-        ]
-        print(f"Productos no enlazados detectados: {len(non_linked_products)}")
+        # Mapear SKUs existentes en WooCommerce
+        woocommerce_skus = {p["sku"]: p for p in woocommerce_products}
 
-        # Paso 6: Generar reporte en Excel
-        print("Generando reporte en Excel...")
-        generate_excel_report(mercado_products, woocommerce_products, non_linked_products)
+        # Inicializar contadores y listas de resultados
+        enlazados = []
+        no_enlazados = []
+        errores = []
+
+        # Procesar productos de MercadoLibre
+        for index, product in enumerate(mercado_products, start=1):
+            try:
+                if product["id"] in woocommerce_skus:
+                    # Producto ya enlazado: Actualizar inventario
+                    stock = max(0, product["inventory"] - 2)
+                    update_woocommerce_stock(product["id"], stock)
+                    enlazados.append(product)
+                else:
+                    # Producto no enlazado: Crear en WooCommerce
+                    create_woocommerce_product(product)
+                    no_enlazados.append(product)
+
+            except Exception as e:
+                # Registrar errores sin detener la ejecución
+                errores.append({
+                    "id": product["id"],
+                    "title": product["title"],
+                    "error": str(e),
+                })
+
+            # Reportar progreso cada 50 productos
+            if index % 50 == 0:
+                print(f"Progreso: {index}/{len(mercado_products)} productos procesados.")
+
+        # Resumen final en consola
+        print("\n===== Resumen Final =====")
+        print(f"Productos enlazados: {len(enlazados)}")
+        print(f"Productos no enlazados (creados): {len(no_enlazados)}")
+        print(f"Errores encontrados: {len(errores)}")
+
+        # Generar reporte en Excel
+        print("\nGenerando reporte en Excel...")
+        generate_excel_report(mercado_products, woocommerce_products)
         print("Reporte generado exitosamente: reporte_productos.xlsx")
 
-        # Paso 7: Subir productos faltantes a WooCommerce
-        print("Subiendo productos no enlazados a WooCommerce...")
-        for product in non_linked_products:
-            create_woocommerce_product(product)
-        print("Productos no enlazados subidos exitosamente.")
+        # Registrar errores en un archivo separado
+        if errores:
+            with open("errores_woocommerce.txt", "w") as error_file:
+                for error in errores:
+                    error_file.write(f"ID: {error['id']}, Título: {error['title']}, Error: {error['error']}\n")
+            print(f"Errores registrados en 'errores_woocommerce.txt'")
 
     except Exception as e:
-        print(f"Error en la ejecución principal: {e}")
+        print(f"Error crítico durante la ejecución: {e}")
+
 
 if __name__ == "__main__":
     main()

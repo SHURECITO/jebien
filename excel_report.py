@@ -1,23 +1,40 @@
-import pandas as pd
+import openpyxl
 
-def generate_excel_report(mercado_products, woocommerce_products, non_linked_products):
+def generate_excel_report(mercado_products, woocommerce_products):
     """
-    Genera un reporte en Excel.
+    Genera un reporte en Excel con productos de MercadoLibre y WooCommerce.
     """
     try:
-        resumen = {
-            "Total MercadoLibre": [len(mercado_products)],
-            "Total WooCommerce": [len(woocommerce_products)],
-            "No Enlazados": [len(non_linked_products)]
-        }
+        # Crear un libro de Excel
+        workbook = openpyxl.Workbook()
+        summary_sheet = workbook.active
+        summary_sheet.title = "Resumen"
 
-        resumen_df = pd.DataFrame(resumen)
-        no_enlazados_df = pd.DataFrame(non_linked_products)
+        # Hoja 1: Resumen General
+        summary_sheet.append(["Cantidad Total de Productos en MercadoLibre", len(mercado_products)])
+        summary_sheet.append(["Cantidad Total de Productos en WooCommerce", len(woocommerce_products)])
+        summary_sheet.append([
+            "Cantidad de Productos No Enlazados",
+            len([p for p in mercado_products if p["id"] not in {w["sku"] for w in woocommerce_products}])
+        ])
 
-        with pd.ExcelWriter("reporte_productos.xlsx") as writer:
-            resumen_df.to_excel(writer, sheet_name="Resumen", index=False)
-            no_enlazados_df.to_excel(writer, sheet_name="No Enlazados", index=False)
+        # Hoja 2: Detalles de Productos No Enlazados
+        details_sheet = workbook.create_sheet(title="No Enlazados")
+        details_sheet.append(["Título", "ID (MercadoLibre)", "Precio", "Inventario"])
+        no_enlazados = [
+            p for p in mercado_products if p["id"] not in {w["sku"] for w in woocommerce_products}
+        ]
+        for product in no_enlazados:
+            details_sheet.append([
+                product["title"],
+                product["id"],
+                product["price"],
+                product["inventory"]
+            ])
 
-        print("Reporte generado: reporte_productos.xlsx")
+        # Guardar el archivo Excel
+        workbook.save("reporte_productos.xlsx")
+        print("Reporte generado exitosamente: reporte_productos.xlsx")
+
     except Exception as e:
-        print(f"Error al generar reporte: {e}")
+        print(f"Error al generar el reporte en Excel: {e}")
