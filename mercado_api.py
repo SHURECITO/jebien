@@ -2,10 +2,10 @@ import requests
 import json
 import time
 
-# Credenciales de tu aplicación en MercadoLibre
-CLIENT_ID = "1285162163304558"  # Reemplaza con tu APP_ID
-CLIENT_SECRET = "4xfMTIMOTtdB8gvmOw4QlTyWzzFawgBS"  # Reemplaza con tu SECRET_KEY
-REDIRECT_URI = "https://jebien.com/"  # Debe coincidir con el configurado en tu app
+# Credenciales ML
+CLIENT_ID = ""
+CLIENT_SECRET = ""
+REDIRECT_URI = ""
 
 # Archivo donde se guardarán los tokens
 TOKEN_FILE = "tokens.json"
@@ -15,7 +15,7 @@ def save_token_to_file(token_info):
     Guarda los tokens en un archivo JSON.
     """
     try:
-        with open("tokens.json", "w") as file:
+        with open(TOKEN_FILE, "w") as file:
             json.dump(token_info, file)
         print("Tokens guardados exitosamente.")
     except Exception as e:
@@ -66,57 +66,55 @@ def generate_access_token(auth_code):
         print(f"Excepción al generar token: {e}")
         return None
 
+
 def refresh_access_token():
     """
-    Renueva el token de acceso usando el Refresh Token.
+    Renueva el token de acceso usando el refresh_token.
     """
-    token_info = load_token_from_file()
-    if not token_info or "refresh_token" not in token_info:
-        print("No se encontró un Refresh Token válido.")
-        return None
-
-    url = "https://api.mercadolibre.com/oauth/token"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/x-www-form-urlencoded"
-    }
-    data = {
-        "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        "refresh_token": token_info["refresh_token"],
-    }
-
     try:
-        response = requests.post(url, headers=headers, data=data)
+        tokens = load_token_from_file()
+        refresh_token = tokens.get("refresh_token")
+        if not refresh_token:
+            print("No se encontró el refresh_token en tokens.json. Por favor, autenticá de nuevo.")
+            return
+
+        url = "https://api.mercadolibre.com/oauth/token"
+        payload = {
+            "grant_type": "refresh_token",
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "refresh_token": refresh_token
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+        response = requests.post(url, data=payload, headers=headers)
+
         if response.status_code == 200:
-            new_token_info = response.json()
-            save_token_to_file(new_token_info)
+            new_tokens = response.json()
+            save_token_to_file(new_tokens)
             print("Token renovado exitosamente.")
-            return new_token_info
         else:
             print(f"Error al renovar token: {response.status_code}")
-            print(f"Detalle: {response.text}")
+            print(response.json())
     except Exception as e:
-        print(f"Excepción al renovar token: {e}")
-        return None
+        print(f"Error al renovar el token: {e}")
+
 
 def get_access_token():
     """
     Obtiene el token de acceso válido, renovándolo si es necesario.
     """
-    token_info = load_token_from_file()
-    if token_info and "access_token" in token_info:
-        return token_info["access_token"]
+    tokens = load_token_from_file()
+    if tokens and "access_token" in tokens:
+        return tokens["access_token"]
 
     print("El token de acceso no es válido o no existe. Intenta generar uno nuevo.")
     return None
 
-def get_mercadolibre_products():
+def get_mercadolibre_products(access_token):
     """
     Obtiene todos los productos desde la API de MercadoLibre usando el UserID.
     """
-    access_token = get_access_token()
     if not access_token:
         print("No se pudo obtener un token válido.")
         return []
@@ -170,7 +168,8 @@ def get_mercadolibre_products():
                                 "title": product_data["title"],
                                 "price": product_data["price"],
                                 "inventory": product_data["available_quantity"],
-                                "images": [img["url"] for img in product_data["pictures"]]
+                                "images": [img["url"] for img in product_data["pictures"]],
+                                "description": product_data.get("description", {}).get("plain_text", "Sin descripción")
                             })
                         else:
                             print(f"Error al obtener detalles del producto {product_id}: {product_response.status_code}")

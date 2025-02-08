@@ -1,12 +1,25 @@
-from mercado_api import get_mercadolibre_products
+import requests
+import json
+from mercado_api import get_access_token, get_mercadolibre_products
 from woocommerce_api import get_woocommerce_products, create_woocommerce_product, update_woocommerce_stock
 from excel_report import generate_excel_report
+import time
 
 def main():
     try:
+        # Validar y obtener el token de acceso
+        print("Validando el token de acceso...")
+        access_token = get_access_token()
+        if not access_token:
+            print("No se pudo obtener un token válido. Verifica tu configuración y vuelve a intentarlo.")
+            return
+
         # Obtener productos de MercadoLibre
         print("Obteniendo productos de MercadoLibre...")
-        mercado_products = get_mercadolibre_products()
+        mercado_products = get_mercadolibre_products(access_token)
+        if not mercado_products:
+            print("No se obtuvieron productos de MercadoLibre. Verifica el token o la conexión.")
+            return
         print(f"Productos obtenidos de MercadoLibre: {len(mercado_products)}")
 
         # Obtener productos de WooCommerce
@@ -34,6 +47,7 @@ def main():
                     # Producto no enlazado: Crear en WooCommerce
                     create_woocommerce_product(product)
                     no_enlazados.append(product)
+                    time.sleep(1)  # Pausa para evitar bloqueos del servidor
 
             except Exception as e:
                 # Registrar errores sin detener la ejecución
@@ -49,7 +63,7 @@ def main():
 
         # Resumen final en consola
         print("\n===== Resumen Final =====")
-        print(f"Productos enlazados: {len(enlazados)}")
+        print(f"Productos enlazados (actualizados): {len(enlazados)}")
         print(f"Productos no enlazados (creados): {len(no_enlazados)}")
         print(f"Errores encontrados: {len(errores)}")
 
